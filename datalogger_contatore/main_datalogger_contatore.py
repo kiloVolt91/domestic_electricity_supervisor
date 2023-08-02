@@ -7,13 +7,15 @@ import urandom
 from init import *
 
 holding_registers = {    #REGISTER ADDRESS : REGISTER NAME [MEASURE UNIT]  
-    0:'Voltage [V]',  #x10 multiplicative factor
-    1:'Current [A]',  #x10 multiplicative factor
-    2:'reg2', ##still investigating
-    3:'reg3', ##still investigating
-    4:'reg4', ##still investigating - probably Active Power [kW]
-    5:'reg5', ##still investigating - probably Active Energy [kWh]
-    6:'PowerFactor'   #x1000 multiplicative factor
+    0:'Voltage [0.1V]',  
+    1:'Current [0.1A]',  
+    2:'Frequency [0.1Hz]', 
+    3:'Active Power [W]', 
+    4:'Reactive Power [var]', 
+    5:'Apparent Power [VA]', 
+    6:'Power Factor [0.001]',
+    7:'Active Energy [Wh]', # reg 7-8, Decimal Long - little endian
+    9:'Reactive Energy [varh]' # reg 9-10, Decimal Long - little endian
     }
 
 def mqtt_client_connection(mqtt_host, mqtt_username,mqtt_password):
@@ -27,12 +29,13 @@ def mqtt_client_connection(mqtt_host, mqtt_username,mqtt_password):
                 server=mqtt_host,
                 user=mqtt_username,
                 password=mqtt_password)
-            print('tentativo di connessione client')
+            #print('trying to connect to the MQTT server') #DEBUG LINE
             mqtt_client.connect()
-            print('client connesso')
+            #print('client connected') #DEBUG LINE
             break
         except Exception as error:
-            print(str(error))
+            #print(str(error)) #DEBUG LINE
+            break
         utime.sleep(2)
     return
 
@@ -44,19 +47,16 @@ def inizialize_board():
     return
 
 def connect_to_wifi():
+    global wlan
     wlan = network.WLAN(network.STA_IF)
-    wlan.active(True)
-    wlan.connect(wifi_ssid, wifi_password)
-    c = 0
     while wlan.isconnected() == False:
-        print('Waiting for connection...')
-        utime.sleep(1)
-        c +=1
-        if c == 10:
-            wlan.connect(wifi_ssid, wifi_password)
-            c = 0
-
-    print("Connected to WiFi")
+        wlan.active(True)
+        wlan.connect(wifi_ssid, wifi_password)
+        #print('Waiting for connection...') # DEBUG LINE
+        utime.sleep(2)
+        wlan.active(False)
+        utime.sleep(2)
+    #print("Connected to WiFi") #DEBUG LINE
     return
 
 def get_modbus_data(rtu_pins, uart_id):
@@ -65,27 +65,46 @@ def get_modbus_data(rtu_pins, uart_id):
         uart_id=uart_id       
     )
     hregs_values = []
-    for i in range(0,7): 
+    for i in range(0,7):
+        # print(i) #DEBUG LINE
         try:
             value = host.read_holding_registers(slave_addr=1, starting_addr=i, register_qty= 1, signed= False)
             hregs_values.append(value[0])
         except Exception as error:
             hregs_values.append('nan')
+    for i in range(7,11,2):
+        #print(i) #DEBUG LINE
+        try:
+            value = host.read_holding_registers(slave_addr=1, starting_addr=i, register_qty= 2, signed= False) ## little-endian --> problem with umodbus.serial library converting the HEX value converting 2 WORDS?
+                                                                                                    ## Does it need to read the HEX value and convert it? HEX within reg8 goes before HEX within reg7?
+            hregs_values.append(value[0])
+        except Exception as error:
+            hregs_values.append('nan')          
     return hregs_values
-            
-inizialize_board()
-connect_to_wifi()
-mqtt_client_connection(mqtt_host, mqtt_username,mqtt_password)
 
-            
+def datalogger ():
+    inizialize_board()
+    connect_to_wifi()
+    mqtt_client_connection(mqtt_host, mqtt_username,mqtt_password)
+                
+    while wlan.isconnected() == True:
+        hregs_values = get_modbus_data(rtu_pins, uart_id)
+        i=0
+        #print(hregs_values) DEBUG LINE
+        for value in hregs_values:
+            val_name = holding_registers[i] 
+            topic = mqtt_publish_topic+str(val_name)
+            #print('publishing: ', value, topic) #DEBUG LINE
+            mqtt_client.publish(topic, str(value))
+            i+=1
+            if i==8:
+                i+=1
+        utime.sleep(60)
+    return
+
 while True:
-    hregs_values = get_modbus_data(rtu_pins, uart_id)
-    i=0
-    print(hregs_values)
-    for valore in hregs_values:
-        val_name = holding_registers[i] 
-        topic = mqtt_publish_topic+str(val_name)
-        print('pubblico: ', valore, topic)
-        mqtt_client.publish(topic, str(valore))
-        i+=1
-    utime.sleep(60)
+    try:
+        datalogger()
+    except Exception as error:
+        #print(str(error)) #DEBUG LINE
+        machine.reset()

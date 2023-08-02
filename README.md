@@ -11,7 +11,6 @@ The Raspberry PI Pico needs 5V power supply provided by the micro-USB port.
 
 N.B. the energy meter OR-WE-504 is sized to read up to electric currents of 80A (with a base current of 5A). The choice fell on it due to its cheap cost (around 30€ on Amazon) and due to be one of the few with a Modbus RTU protocol on board. Due to the work-in-progress nature of the project, the possible lack of accuracy using the energy meter with much lower currents is still under monitoring. 
 This repository is still a "pilot project" with the main purpose of better understand the tools and their limits.
-Also the measure units are still under study (a x10 factor is actually active on Voltage and Current)
 Instead of "investigate" the parameters is also possible set-up the modbus slave's holding registers using a RS485 to USB converter through the program provided by ORNO at the product link.
 
 Orno OR-WE-504 product link: https://orno.pl/en/product/1082/1-phase-energy-meter-wtih-rs-485-80a
